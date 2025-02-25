@@ -137,7 +137,8 @@ To showcase my programming skills, I've developed several Python games using Pyg
   - Multiple balls with independent movement.
   - Score tracking for both player and AI.
   - Simple AI that tracks the first ball.
-- **Code**: <a href="https://github.com/jonathanholl/jonathanholl.github.io/blob/main/multi_ball_pong.py" target="_blank">Multi Ball Pong Script</a>
+- **Code**: [<a href="https://github.com/jonathanholl/jonathanholl.github.io/blob/main/multi_ball_pong.py" target="_blank">Multi Ball Pong Script</a>](https://raw.githubusercontent.com/jonathanholl/jonathanholl.github.io/main/multi_ball_pong.py
+)
 
 
 - **Skills Demonstrated**: Object-oriented programming, collision detection, game loop management.
