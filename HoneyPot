@@ -1,0 +1,173 @@
+ This project provides an end‑to‑end reference implementation for building a low‑interaction honeypot, ingesting its logs, engineering features from those logs, and training an attack classification model using TPOT and scikit‑learn. The repository is intentionally self‑contained: you can clone it, run a few Make commands and have a working system that listens for attacks, ingests synthetic data, trains an AutoML pipeline and exposes predictions via a simple FastAPI service. Please read the ethical & safety guidelines below before running the honeypot. It is designed for lab use only and intentionally keeps interaction with attackers minimal. Running a honeypot on a public network may be illegal in some jurisdictions – you assume all responsibility when deploying this code. -->
+tpot‑honeypot‑lab
+End‑to‑end honeypot + AutoML (TPOT) pipeline for attack analytics. This repository contains everything you need to run a simple SSH/HTTP honeypot, parse and featurise its logs, automatically train a classifier with TPOT, evaluate the resulting model and deploy it as a prediction API. The goal of this project is educational: it shows how to combine security instrumentation with modern machine learning workflows in a reproducible way.
+
+📦 Repository contents
+bash
+Copy
+Edit
+tpot-honeypot-lab/
+├─ README.md                # You are here
+├─ LICENSE                 # MIT License
+├─ CITATION.cff            # How to cite this work
+├─ CODE_OF_CONDUCT.md      # Contributor behaviour
+├─ SECURITY.md             # Scope & disclosure policy
+├─ CONTRIBUTING.md         # Development guidelines
+├─ Makefile                # Convenience targets
+├─ pyproject.toml          # Project metadata & dependencies
+├─ uv.lock                 # Frozen dependency lock file
+├─ .pre-commit-config.yaml # Code quality hooks
+├─ .github/
+│  ├─ workflows/ci.yml         # CI pipeline on GitHub Actions
+│  └─ ISSUE_TEMPLATE/bug_report.md
+├─ src/
+│  ├─ honeypot/
+│  │  ├─ __init__.py
+│  │  ├─ run_honeypot.py       # Minimal HTTP+SSH trap
+│  │  ├─ log_parser.py         # Parse logs → parquet
+│  │  ├─ feature_engineering.py# Sessions → features
+│  │  └─ labeling.py           # Weak labels & heuristics
+│  ├─ automl/
+│  │  ├─ train_tpot.py         # AutoML search & export
+│  │  ├─ eval.py               # Metrics & plots
+│  │  └─ model_registry.py     # Versioned model storage
+│  └─ api/
+│     └─ serve.py              # FastAPI inference service
+├─ data/
+│  ├─ raw/       # Sample logs (sanitised)
+│  ├─ interim/
+│  └─ processed/
+├─ notebooks/
+│  ├─ 01_Exploration.ipynb
+│  └─ 02_Feature_Prototypes.ipynb
+├─ models/
+│  └─ README.md               # Explanation of stored models
+├─ tests/
+│  ├─ test_parsing.py
+│  ├─ test_features.py
+│  └─ test_api.py
+└─ docker/
+   ├─ Dockerfile
+   └─ compose.yaml
+🚀 Quick start
+You can run this lab on any recent Linux or macOS machine with Python 3.11+ installed. A few convenient make targets orchestrate the entire workflow. First clone the repository, then run the following commands:
+
+bash
+Copy
+Edit
+# Install dependencies and prepare pre‑commit hooks
+make setup
+
+# (optional) generate fresh synthetic logs for a clean experiment
+make demo-data
+
+# Ingest the raw logs into an intermediate parquet file
+make ingest
+
+# Engineer session level features from the ingested logs
+make featurize
+
+# Run TPOT’s genetic search to build the best classifier (may take ~20 mins)
+make automl
+
+# Evaluate the exported pipeline and produce plots
+make evaluate
+
+# Start the FastAPI inference server on http://localhost:8000
+make serve
+
+# Query the API with a sample feature vector
+curl -X POST localhost:8000/predict -H 'Content-Type: application/json' \
+     -d '{"req_per_min": 18, "unique_endpoints": 7, "cmd_entropy": 3.4, "default_creds_attempts": 5}'
+Diagram of the pipeline
+The following Mermaid diagram summarises the data flow through the system:
+
+mermaid
+Copy
+Edit
+flowchart LR
+    A[Honeypot (HTTP/SSH)] --> B[Raw logs (text)]
+    B --> C[Log parser]\n`log_parser.py`
+    C --> D[Interim parquet]\ndata/interim/sessions.parquet
+    D --> E[Feature engineering]\n`feature_engineering.py`
+    E --> F[Processed dataset]\ndata/processed/features.parquet
+    F --> G[TPOT training]\n`train_tpot.py`
+    G --> H[Best pipeline]\nmodels/best_pipeline.pkl
+    H --> I[Evaluation]\n`eval.py`
+    H --> J[FastAPI server]\n`serve.py`
+    style H fill:#f9f,stroke:#333,stroke-width:2px
+    classDef file fill:#e0f7fa,stroke:#0097a7,stroke-width:1px;
+    class B,D,F file;
+    class H file;
+💡 60‑second overview
+The honeypot component spins up a tiny HTTP server and a dummy SSH listener on arbitrary high ports. It logs every request with timestamps, IP addresses, requested endpoints, user‑agent strings and crude SSH credential attempts. A parser normalises these logs into a structured table. Feature engineering scripts aggregate requests into sessions and compute high‑level statistics: request rates, endpoint diversity, command entropy, default credential attempts, and temporal features. A simple heuristic labelling function marks obviously malicious sessions (e.g. those hammering default credentials or scanning many endpoints) to bootstrap supervised learning.
+
+Using TPOT, a genetic algorithm based AutoML tool, the pipeline then searches over a space of scikit‑learn model architectures to maximise an F1 score on the weakly labelled data. The resulting model is exported as both Python code and a pickled pipeline. Finally, a small FastAPI app loads the model and exposes a /predict endpoint that accepts JSON feature vectors and returns class predictions with confidence scores and the top contributing features when available.
+
+⚠ Ethics & safety
+This repository intentionally implements a low‑interaction honeypot. It does not emulate full services, nor does it attempt to trick or entrap attackers. Its purpose is to generate benign synthetic attack traffic for research and educational purposes. Do not deploy this code on production networks or to internet‑facing infrastructure without proper isolation. Running a honeypot can have legal and ethical implications depending on your jurisdiction. Always separate honeypot traffic from sensitive systems and obtain appropriate approvals before collecting real attack data.
+
+🔧 Make targets
+Key tasks are defined in the Makefile for convenience:
+
+Target	Purpose
+setup	Install dependencies via uv (or pip fallback) and set up pre‑commit
+demo-data	Generate fresh synthetic log files in data/raw
+ingest	Parse logs from data/raw into data/interim parquet
+featurize	Engineer features from sessions into data/processed
+automl	Train a TPOT pipeline and export the best model
+evaluate	Compute metrics and save ROC/PR curves
+serve	Launch the FastAPI server on localhost:8000
+test	Run the unit tests with pytest
+lint	Run Ruff and Black style checks
+format	Format code using Black
+clean	Remove generated data and models
+
+🧪 Running the tests
+To ensure the core components behave correctly the repository ships with a small test suite. After installing the dependencies simply run:
+
+bash
+Copy
+Edit
+make test
+Tests cover log parsing, feature engineering and the API contract. Achieving a coverage above 90% on these core utilities is a goal of this project.
+
+📈 Roadmap & contributing
+This lab is an educational starting point, not a final product. There are many possible improvements: adding richer features (e.g. TLS JA3 fingerprints, geo lookups), incorporating anomaly detection for unlabeled data, integrating telemetry traces, or parameterising TPOT search via environment variables. We welcome contributions! Please see CONTRIBUTING.md for details on how to file issues, submit patches and follow our coding standards. A few issues labelled good first issue have been pre‑seeded to help new contributors get started.
+
+📜 Citation
+If you use this project in academic work, please cite it via the CITATION.cff metadata or the following BibTeX snippet:
+
+bibtex
+Copy
+Edit
+@software{tpot_honeypot_lab,
+  title        = {tpot-honeypot-lab: End-to-end honeypot + AutoML pipeline},
+  author       = {Anonymous},
+  year         = {2025},
+  url          = {https://github.com/username/tpot-honeypot-lab},
+}
+📞 Support
+For security vulnerabilities please consult SECURITY.md and follow the responsible disclosure process. For general questions or troubleshooting open an issue on GitHub.
+
+
+
+Makefile: convenience targets for setup, data generation, ingestion, feature engineering, AutoML training, evaluation, serving, linting, testing, and Docker: Makefile
+
+CI workflow (.github/workflows/ci.yml): GitHub Actions configuration for installing dependencies, running linters, tests, generating synthetic data, training a quick TPOT model, evaluating it, uploading artifacts, and building the Docker image: ci.yml
+
+Starter scripts:
+
+Honeypot runner (src/honeypot/run_honeypot.py): spawns minimal HTTP and SSH listeners, logging to data/raw: run_honeypot.py
+
+Log parser (src/honeypot/log_parser.py): parses raw logs into a normalized DataFrame and writes parquet/CSV; also generates synthetic demo logs: log_parser.py
+
+Feature engineering (src/honeypot/feature_engineering.py): aggregates events per IP, computes statistics (request rate, endpoint diversity, entropy, default-credential attempts, user-agent rarity, temporal features), and applies weak labels: feature_engineering.py
+
+Labeling heuristics (src/honeypot/labeling.py): simple rules for benign/malicious classification with YAML overrides: labeling.py
+
+TPOT training script (src/automl/train_tpot.py): runs TPOT AutoML search with configurable hyperparameters, exports the best pipeline as Python code and a pickled model, saves metrics and plots: train_tpot.py
+
+Evaluation script (src/automl/eval.py): evaluates a trained model on a feature dataset, computing metrics and generating ROC/PR curves: eval.py
+
+FastAPI service (src/api/serve.py): loads the trained model and exposes /health, /version, and /predict endpoints for inference: serve.py
